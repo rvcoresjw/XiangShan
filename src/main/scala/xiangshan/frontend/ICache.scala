@@ -128,6 +128,7 @@ class ICacheMetaArray(implicit p: Parameters) extends ICacheArray
     val read     = Flipped(DecoupledIO(new ICacheReadBundle))
     val readResp = Output(new ICacheMetaRespBundle)
     val fencei   = Input(Bool())
+    val cacheOp  = Flipped(new DCacheInnerOpIO) // customized cache op port 
   }}
 
   io.read.ready := !io.write.valid
@@ -172,6 +173,51 @@ class ICacheMetaArray(implicit p: Parameters) extends ICacheArray
   (io.readResp.valid zip validMetas).map  {case (io, reg)   => io := reg.asTypeOf(Vec(nWays,Bool()))}
 
   io.write.ready := DontCare
+
+  // deal with customized cache op
+  require(nWays <= 32)
+  io.cacheOp.resp.bits := DontCare
+  val cacheOpShouldResp = WireInit(false.B) 
+  when(io.cacheOp.req.valid){
+    when(
+      CacheInstrucion.isReadTag(io.cacheOp.req.bits.opCode) ||
+      CacheInstrucion.isReadTagECC(io.cacheOp.req.bits.opCode)
+    ){
+      for (i <- 0 until 2) {
+        tagArrays(i).io.r.req.valid := true.B
+        tagArrays(i).io.r.req.bits.apply(setIdx = io.cacheOp.req.bits.index)
+      }
+      cacheOpShouldResp := true.B
+    }
+    when(CacheInstrucion.isWriteTag(io.cacheOp.req.bits.opCode)){
+      for (i <- 0 until 2) {
+        tagArrays(i).io.w.req.valid := true.B
+        tagArrays(i).io.w.req.bits.apply(
+          data = io.cacheOp.req.bits.write_tag_low, 
+          setIdx = io.cacheOp.req.bits.index, 
+          waymask = UIntToOH(io.cacheOp.req.bits.wayNum(4, 0))
+        )
+      }
+      cacheOpShouldResp := true.B
+    }
+    // TODO
+    // when(CacheInstrucion.isWriteTagECC(io.cacheOp.req.bits.opCode)){
+    //   for (i <- 0 until readPorts) {
+    //     array(i).io.ecc_write.valid := true.B
+    //     array(i).io.ecc_write.bits.idx := io.cacheOp.req.bits.index
+    //     array(i).io.ecc_write.bits.way_en := UIntToOH(io.cacheOp.req.bits.wayNum(4, 0))
+    //     array(i).io.ecc_write.bits.ecc := io.cacheOp.req.bits.write_tag_ecc
+    //   }
+    //   cacheOpShouldResp := true.B
+    // }
+  }
+  io.cacheOp.resp.valid := RegNext(io.cacheOp.req.valid && cacheOpShouldResp)
+  io.cacheOp.resp.bits.read_tag_low := Mux(io.cacheOp.resp.valid, 
+    tagArrays(0).io.r.resp.asTypeOf(Vec(nWays, UInt(tagBits.W)))(io.cacheOp.req.bits.wayNum),
+    0.U
+  )
+  io.cacheOp.resp.bits.read_tag_ecc := DontCare // TODO
+  // TODO: deal with duplicated array
 }
 
 
@@ -181,6 +227,7 @@ class ICacheDataArray(implicit p: Parameters) extends ICacheArray
     val write    = Flipped(DecoupledIO(new ICacheDataWriteBundle))
     val read     = Flipped(DecoupledIO(new ICacheReadBundle))
     val readResp = Output(new ICacheDataRespBundle)
+    val cacheOp  = Flipped(new DCacheInnerOpIO) // customized cache op port 
   }}
 
   io.read.ready := !io.write.valid
@@ -209,6 +256,61 @@ class ICacheDataArray(implicit p: Parameters) extends ICacheArray
   (io.readResp.datas zip dataArrays).map {case (io, sram) => io :=  sram.io.r.resp.data.asTypeOf(Vec(nWays, UInt(blockBits.W)))  }
 
   io.write.ready := true.B
+
+  // deal with customized cache op
+  require(nWays <= 32)
+  io.cacheOp.resp.bits := DontCare
+  val cacheOpShouldResp = WireInit(false.B) 
+  when(io.cacheOp.req.valid){
+    when(
+      CacheInstrucion.isReadData(io.cacheOp.req.bits.opCode) ||
+      CacheInstrucion.isReadDataECC(io.cacheOp.req.bits.opCode)
+    ){
+      (0 until 2).map(i => {
+        dataArrays(i).io.r.req.valid := true.B
+        dataArrays(i).io.r.req.bits.apply(setIdx = io.cacheOp.req.bits.index)
+      })
+      cacheOpShouldResp := true.B
+    }
+    when(CacheInstrucion.isWriteData(io.cacheOp.req.bits.opCode)){
+      (0 until 2).map(i => {
+        dataArrays(i).io.w.req.valid := io.cacheOp.req.bits.bank_num === i.U
+        dataArrays(i).io.w.req.bits.apply(
+          data = io.cacheOp.req.bits.write_data_vec.asUInt,
+          setIdx = io.cacheOp.req.bits.index,
+          waymask = UIntToOH(io.cacheOp.req.bits.wayNum(4, 0))
+        )
+      })
+      cacheOpShouldResp := true.B
+    }
+    // when(CacheInstrucion.isWriteDataECC(io.cacheOp.req.bits.opCode)){
+    //   for (bank_index <- 0 until DCacheBanks) {
+    //     val ecc_bank = ecc_banks(bank_index)
+    //     ecc_bank.io.w.req.valid := true.B
+    //     ecc_bank.io.w.req.bits.apply(
+    //       setIdx = io.cacheOp.req.bits.index,
+    //       data = io.cacheOp.req.bits.write_data_ecc,
+    //       waymask = UIntToOH(io.cacheOp.req.bits.wayNum(4, 0))
+    //     )
+    //   }
+    //   cacheOpShouldResp := true.B
+    // }
+  }
+  io.cacheOp.resp.valid := RegNext(io.cacheOp.req.valid && cacheOpShouldResp)
+  val dataresp = Mux(io.cacheOp.req.bits.bank_num(0).asBool,
+    dataArrays(0).io.r.resp.data.asTypeOf(Vec(nWays, UInt(blockBits.W))),
+    dataArrays(1).io.r.resp.data.asTypeOf(Vec(nWays, UInt(blockBits.W)))
+  )
+  
+  val numICacheLineWords = blockBits / 64 
+  require(blockBits >= 64 && isPow2(blockBits))
+  for (wordIndex <- 0 until numICacheLineWords) {
+    io.cacheOp.resp.bits.read_data_vec(wordIndex) := dataresp(io.cacheOp.req.bits.wayNum(4, 0))(64*(wordIndex+1)-1, 64*wordIndex)
+  }
+  // io.cacheOp.resp.bits.read_data_ecc := Mux(io.cacheOp.resp.valid, 
+    // bank_result(io.cacheOp.req.bits.bank_num).ecc, 
+    // 0.U
+  // )
 }
 
 
@@ -362,6 +464,16 @@ class ICacheMissEntry(edge: TLEdgeOut)(implicit p: Parameters) extends ICacheMis
     XSDebug("[ICache MSHR %d] (meta_write)  valid%d ready:%d  tag:%x \n",io.id.asUInt,io.meta_write.valid,io.meta_write.ready,io.meta_write.bits.phyTag)
     XSDebug("[ICache MSHR %d] (refill)  valid%d ready:%d  data:%x \n",io.id.asUInt,io.data_write.valid,io.data_write.ready,io.data_write.bits.data.asUInt())
     XSDebug("[ICache MSHR %d] (resp)  valid%d ready:%d \n",io.id.asUInt,io.resp.valid,io.resp.ready)
+  val perfinfo = IO(new Bundle(){
+    val perfEvents = Output(new PerfEventsBundle(2))
+  })
+  val perfEvents = Seq(
+    ("icache_miss_cnt         ", io.req.fire()                                ),
+    ("icache_miss_penty       ", BoolStopWatch(start = io.req.fire(), stop = io.resp.fire() || io.flush, startHighPriority = true)                               ),
+  )
+  for (((perf_out,(perf_name,perf)),i) <- perfinfo.perfEvents.perf_events.zip(perfEvents).zipWithIndex) {
+    perf_out.incr_step := RegNext(perf)
+  }
 
 
 }
@@ -431,6 +543,13 @@ class ICacheMissQueue(edge: TLEdgeOut)(implicit p: Parameters) extends ICacheMis
 
   io.meta_write     <> meta_write_arb.io.out
   io.data_write     <> refill_arb.io.out
+  val perfinfo = IO(new Bundle(){
+    val perfEvents = Output(new PerfEventsBundle(2*2))
+  })
+  val entry_0_perf = entries(0).perfEvents.map(_._1).zip(entries(0).perfinfo.perfEvents.perf_events)
+  val entry_1_perf = entries(1).perfEvents.map(_._1).zip(entries(1).perfinfo.perfEvents.perf_events)
+  val perfEvents = entry_0_perf ++ entry_1_perf
+  perfinfo.perfEvents.perf_events := entries(0).perfinfo.perfEvents.perf_events ++ entries(1).perfinfo.perfEvents.perf_events
 
   (0 until nWays).map{ w =>
     XSPerfAccumulate("line_0_refill_way_" + Integer.toString(w, 10),  entries(0).io.meta_write.valid && OHToUInt(entries(0).io.meta_write.bits.waymask)  === w.U)
@@ -445,6 +564,7 @@ class ICacheIO(implicit p: Parameters) extends ICacheBundle
   val dataRead    = new ICacheCommonReadBundle(isMeta = false)
   val missQueue   = new ICacheMissBundle
   val fencei      = Input(Bool())
+  val csr         = new L1CacheToCsrIO
 }
 
 class ICache()(implicit p: Parameters) extends LazyModule with HasICacheParameters {
@@ -495,4 +615,24 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   bus.c.bits  := DontCare
   bus.e.valid := false.B
   bus.e.bits  := DontCare
+
+  // Customized csr cache op support
+  val cacheOpDecoder = Module(new CSRCacheOpDecoder("icache", CacheInstrucion.COP_ID_ICACHE))
+  cacheOpDecoder.io.csr <> io.csr
+  dataArray.io.cacheOp.req := cacheOpDecoder.io.cache.req
+  metaArray.io.cacheOp.req := cacheOpDecoder.io.cache.req
+  cacheOpDecoder.io.cache.resp.valid := 
+    dataArray.io.cacheOp.resp.valid ||
+    metaArray.io.cacheOp.resp.valid
+  cacheOpDecoder.io.cache.resp.bits := Mux1H(List(
+    dataArray.io.cacheOp.resp.valid -> dataArray.io.cacheOp.resp.bits,
+    metaArray.io.cacheOp.resp.valid -> metaArray.io.cacheOp.resp.bits,
+  ))
+  assert(!((dataArray.io.cacheOp.resp.valid +& metaArray.io.cacheOp.resp.valid) > 1.U))
+
+  val perfEvents = missQueue.perfEvents.map(_._1).zip(missQueue.perfinfo.perfEvents.perf_events)
+  val perfinfo = IO(new Bundle(){
+    val perfEvents = Output(new PerfEventsBundle(2*2))
+  })
+  perfinfo.perfEvents := missQueue.perfinfo.perfEvents
 }
