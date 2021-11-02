@@ -21,29 +21,30 @@ import chisel3._
 import chisel3.util._
 import utils._
 import xiangshan._
-import xiangshan.cache.{DCacheWordIO, MemoryOpConstants}
-import xiangshan.cache.mmu.{TlbRequestIO, TlbCmd}
+import xiangshan.cache.{DCacheWordIOWithVaddr, MemoryOpConstants}
+import xiangshan.cache.mmu.{TlbCmd, TlbRequestIO}
 import difftest._
+import xiangshan.backend.fu.PMPRespBundle
 
 class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstants{
   val io = IO(new Bundle() {
     val in            = Flipped(Decoupled(new ExuInput))
     val storeDataIn   = Flipped(Valid(new StoreDataBundle)) // src2 from rs
     val out           = Decoupled(new ExuOutput)
-    val dcache        = new DCacheWordIO
+    val dcache        = new DCacheWordIOWithVaddr
     val dtlb          = new TlbRequestIO
+    val pmpResp       = Flipped(new PMPRespBundle())
     val rsIdx         = Input(UInt(log2Up(IssQueSize).W))
     val flush_sbuffer = new SbufferFlushBundle
-    val rsFeedback   = ValidIO(new RSFeedback)
+    val feedbackSlow  = ValidIO(new RSFeedback)
     val redirect      = Flipped(ValidIO(new Redirect))
-    val flush      = Input(Bool())
     val exceptionAddr = ValidIO(UInt(VAddrBits.W))
   })
 
   //-------------------------------------------------------
   // Atomics Memory Accsess FSM
   //-------------------------------------------------------
-  val s_invalid :: s_tlb  :: s_flush_sbuffer_req :: s_flush_sbuffer_resp :: s_cache_req :: s_cache_resp :: s_finish :: Nil = Enum(7)
+  val s_invalid :: s_tlb :: s_pm :: s_flush_sbuffer_req :: s_flush_sbuffer_resp :: s_cache_req :: s_cache_resp :: s_finish :: Nil = Enum(8)
   val state = RegInit(s_invalid)
   val data_valid = RegInit(false.B)
   val in = Reg(new ExuInput())
@@ -103,11 +104,12 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
   // we send feedback right after we receives request
   // also, we always treat amo as tlb hit
   // since we will continue polling tlb all by ourself
-  io.rsFeedback.valid       := RegNext(RegNext(io.in.valid))
-  io.rsFeedback.bits.hit    := true.B
-  io.rsFeedback.bits.rsIdx  := RegEnable(io.rsIdx, io.in.valid)
-  io.rsFeedback.bits.flushState := DontCare
-  io.rsFeedback.bits.sourceType := DontCare
+  io.feedbackSlow.valid       := RegNext(RegNext(io.in.valid))
+  io.feedbackSlow.bits.hit    := true.B
+  io.feedbackSlow.bits.rsIdx  := RegEnable(io.rsIdx, io.in.valid)
+  io.feedbackSlow.bits.flushState := DontCare
+  io.feedbackSlow.bits.sourceType := DontCare
+  io.feedbackSlow.bits.dataInvalidSqIdx := DontCare
 
   // tlb translation, manipulating signals && deal with exception
   when (state === s_tlb) {
@@ -115,14 +117,15 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
     // keep firing until tlb hit
     io.dtlb.req.valid       := true.B
     io.dtlb.req.bits.vaddr  := in.src(0)
-    io.dtlb.req.bits.roqIdx := in.uop.roqIdx
+    io.dtlb.req.bits.robIdx := in.uop.robIdx
     io.dtlb.resp.ready      := true.B
     val is_lr = in.uop.ctrl.fuOpType === LSUOpType.lr_w || in.uop.ctrl.fuOpType === LSUOpType.lr_d
     io.dtlb.req.bits.cmd    := Mux(is_lr, TlbCmd.atom_read, TlbCmd.atom_write)
     io.dtlb.req.bits.debug.pc := in.uop.cf.pc
     io.dtlb.req.bits.debug.isFirstIssue := false.B
 
-    when(io.dtlb.resp.fire && !io.dtlb.resp.bits.miss){
+    when(io.dtlb.resp.fire){
+      paddr := io.dtlb.resp.bits.paddr
       // exception handling
       val addrAligned = LookupTree(in.uop.ctrl.fuOpType(1,0), List(
         "b00".U   -> true.B,              //b
@@ -135,24 +138,34 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
       exceptionVec(loadPageFault)       := io.dtlb.resp.bits.excp.pf.ld
       exceptionVec(storeAccessFault)    := io.dtlb.resp.bits.excp.af.st
       exceptionVec(loadAccessFault)     := io.dtlb.resp.bits.excp.af.ld
-      val exception = !addrAligned ||
-        io.dtlb.resp.bits.excp.pf.st ||
-        io.dtlb.resp.bits.excp.pf.ld ||
-        io.dtlb.resp.bits.excp.af.st ||
-        io.dtlb.resp.bits.excp.af.ld
-      is_mmio := io.dtlb.resp.bits.mmio
-      when (exception) {
-        // check for exceptions
-        // if there are exceptions, no need to execute it
-        state := s_finish
-        atom_override_xtval := true.B
-      } .otherwise {
-        paddr := io.dtlb.resp.bits.paddr
-        state := s_flush_sbuffer_req
+
+      when (!io.dtlb.resp.bits.miss) {
+        when (!addrAligned) {
+          // NOTE: when addrAligned, do not need to wait tlb actually
+          // check for miss aligned exceptions, tlb exception are checked next cycle for timing
+          // if there are exceptions, no need to execute it
+          state := s_finish
+          atom_override_xtval := true.B
+        } .otherwise {
+          state := s_pm
+        }
       }
     }
   }
 
+  when (state === s_pm) {
+    is_mmio := io.pmpResp.mmio
+    // NOTE: only handle load/store exception here, if other exception happens, don't send here
+    val exception_va = exceptionVec(storePageFault) || exceptionVec(loadPageFault) ||
+      exceptionVec(storeAccessFault) || exceptionVec(loadAccessFault)
+    val exception_pa = io.pmpResp.st
+    when (exception_va || exception_pa) {
+      state := s_finish
+      atom_override_xtval := true.B
+    }.otherwise {
+      state := s_flush_sbuffer_req
+    }
+  }
 
   when (state === s_flush_sbuffer_req) {
     io.flush_sbuffer.valid := true.B
@@ -194,6 +207,7 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
     ))
 
     io.dcache.req.bits.addr := paddr
+    io.dcache.req.bits.vaddr := in.src(0) // vaddr
     io.dcache.req.bits.data := genWdata(in.src(1), in.uop.ctrl.fuOpType(1,0))
     // TODO: atomics do need mask: fix mask
     io.dcache.req.bits.mask := genWmask(paddr, in.uop.ctrl.fuOpType(1,0))
@@ -272,7 +286,7 @@ class AtomicsUnit(implicit p: Parameters) extends XSModule with MemoryOpConstant
     data_valid := false.B
   }
 
-  when(io.redirect.valid || io.flush){
+  when (io.redirect.valid) {
     atom_override_xtval := false.B
   }
 

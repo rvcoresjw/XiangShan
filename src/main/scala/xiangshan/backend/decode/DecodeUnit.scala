@@ -35,7 +35,7 @@ abstract trait DecodeConstants {
   def Y = BitPat("b1")
 
   def decodeDefault: List[BitPat] = // illegal instruction
-    //   srcType(0)     srcType(1)     srcType(2)     fuType      fuOpType    rfWen
+    //   srcType(0)   srcType(1)   srcType(2)   fuType      fuOpType    rfWen  
     //   |            |            |            |           |           |  fpWen
     //   |            |            |            |           |           |  |  isXSTrap
     //   |            |            |            |           |           |  |  |  noSpecExec
@@ -106,7 +106,7 @@ object XDecode extends DecodeConstants {
     LHU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lhu, Y, N, N, N, N, N, N, SelImm.IMM_I),
     LB      -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lb, Y, N, N, N, N, N, N, SelImm.IMM_I),
     LBU     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.ldu, LSUOpType.lbu, Y, N, N, N, N, N, N, SelImm.IMM_I),
-
+    
     SW      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sw, N, N, N, N, N, N, N, SelImm.IMM_S),
     SH      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sh, N, N, N, N, N, N, N, SelImm.IMM_S),
     SB      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.stu, LSUOpType.sb, N, N, N, N, N, N, N, SelImm.IMM_S),
@@ -165,7 +165,7 @@ object XDecode extends DecodeConstants {
     CSRRSI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.seti, Y, N, N, Y, Y, N, N, SelImm.IMM_Z),
     CSRRCI  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.clri, Y, N, N, Y, Y, N, N, SelImm.IMM_Z),
 
-    SFENCE_VMA->List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.fence, FenceOpType.sfence, N, N, N, Y, Y, Y, N, SelImm.IMM_X),
+    SFENCE_VMA->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.fence, FenceOpType.sfence, N, N, N, Y, Y, Y, N, SelImm.IMM_X),
     EBREAK  -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
     ECALL   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
     SRET    -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.csr, CSROpType.jmp, Y, N, N, Y, Y, N, N, SelImm.IMM_I),
@@ -206,18 +206,20 @@ object XDecode extends DecodeConstants {
     ANDN    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.andn, Y, N, N, N, N, N, N, SelImm.IMM_X),
     ORN     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.orn, Y, N, N, N, N, N, N, SelImm.IMM_X),
     XNOR    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.xnor, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    ORC_B   -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.orcb, Y, N, N, N, N, N, N, SelImm.IMM_X),
 
     MIN     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.min, Y, N, N, N, N, N, N, SelImm.IMM_X),
     MINU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.minu, Y, N, N, N, N, N, N, SelImm.IMM_X),
     MAX     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.max, Y, N, N, N, N, N, N, SelImm.IMM_X),
     MAXU    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.maxu, Y, N, N, N, N, N, N, SelImm.IMM_X),
 
-    SEXT_B  -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.sext_b, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SEXT_H  -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.sext_h, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    ZEXT_H  -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.zext_h, Y, N, N, N, N, N, N, SelImm.IMM_X),
-
-    ORC_B   -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.orc_b, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SEXT_B  -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.sextb, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    PACKH   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.packh, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SEXT_H  -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.sexth, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    PACKW   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.packw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    REVB    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.revb, Y, N, N, N, N, N, N, SelImm.IMM_X),
     REV8    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.alu, ALUOpType.rev8, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    PACK    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.pack, Y, N, N, N, N, N, N, SelImm.IMM_X),
 
     BSET    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.bset, Y, N, N, N, N, N, N, SelImm.IMM_X),
     BSETI   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.bset, Y, N, N, N, N, N, N, SelImm.IMM_I),
@@ -235,11 +237,11 @@ object XDecode extends DecodeConstants {
     SH1ADD  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh1add, Y, N, N, N, N, N, N, SelImm.IMM_X),
     SH2ADD  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh2add, Y, N, N, N, N, N, N, SelImm.IMM_X),
     SH3ADD  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh3add, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SH1ADDU_W   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh1add_uw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SH2ADDU_W   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh2add_uw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SH3ADDU_W   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh3add_uw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    ADDU_W      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.add_uw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    SLLIU_W     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.slli_uw, Y, N, N, N, N, N, N, SelImm.IMM_I)
+    SH1ADDU_W   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh1adduw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SH2ADDU_W   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh2adduw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SH3ADDU_W   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.sh3adduw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    ADDU_W      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.alu, ALUOpType.adduw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SLLIU_W     -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.alu, ALUOpType.slliuw, Y, N, N, N, N, N, N, SelImm.IMM_I)
   )
 }
 
@@ -333,17 +335,45 @@ object FDecode extends DecodeConstants{
 object BDecode extends DecodeConstants{
   val table: Array[(BitPat, List[BitPat])] = Array(
     // Basic bit manipulation
-    CLZ     -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bmu, BMUOpType.clz, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    CTZ     -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bmu, BMUOpType.ctz, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    CPOP    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bmu, BMUOpType.cpop, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    
-    CLZW    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bmu, BMUOpType.clzw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    CTZW    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bmu, BMUOpType.ctzw, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    CPOPW   -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bmu, BMUOpType.cpopw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CLZ     -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bku, BKUOpType.clz, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CTZ     -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bku, BKUOpType.ctz, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CPOP    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bku, BKUOpType.cpop, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    XPERM_B -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.xpermb, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    XPERM_N -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.xpermn, Y, N, N, N, N, N, N, SelImm.IMM_X),
 
-    CLMUL   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bmu, BMUOpType.clmul, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    CLMULH  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bmu, BMUOpType.clmulh, Y, N, N, N, N, N, N, SelImm.IMM_X),
-    CLMULR  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bmu, BMUOpType.clmulr, Y, N, N, N, N, N, N, SelImm.IMM_X)
+    CLZW    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bku, BKUOpType.clzw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CTZW    -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bku, BKUOpType.ctzw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CPOPW   -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.bku, BKUOpType.cpopw, Y, N, N, N, N, N, N, SelImm.IMM_X),
+
+    CLMUL   -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.clmul, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CLMULH  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.clmulh, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    CLMULR  -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.clmulr, Y, N, N, N, N, N, N, SelImm.IMM_X),
+
+    AES64ES     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.aes64es, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    AES64ESM    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.aes64esm, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    AES64DS     -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.aes64ds, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    AES64DSM    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.aes64dsm, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    AES64IM     -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.aes64im, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    AES64KS1I   -> List(SrcType.reg, SrcType.imm, SrcType.DC, FuType.bku, BKUOpType.aes64ks1i, Y, N, N, N, N, N, N, SelImm.IMM_I),
+    AES64KS2    -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.aes64ks2, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA256SUM0  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha256sum0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA256SUM1  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha256sum1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA256SIG0  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha256sig0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA256SIG1  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha256sig1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA512SUM0  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha512sum0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA512SUM1  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha512sum1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA512SIG0  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha512sig0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SHA512SIG1  -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sha512sig1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM3P0       -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sm3p0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM3P1       -> List(SrcType.reg, SrcType.DC,  SrcType.DC, FuType.bku, BKUOpType.sm3p1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4KS0      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ks0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4KS1      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ks1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4KS2      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ks2, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4KS3      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ks3, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4ED0      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ed0, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4ED1      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ed1, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4ED2      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ed2, Y, N, N, N, N, N, N, SelImm.IMM_X),
+    SM4ED3      -> List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.bku, BKUOpType.sm4ed3, Y, N, N, N, N, N, N, SelImm.IMM_X),
   )
 }
 
@@ -356,6 +386,50 @@ object FDivSqrtDecode extends DecodeConstants {
   FDIV_D    ->List(SrcType.fp,  SrcType.fp, SrcType.DC, FuType.fmisc, X, N, Y, N, N, N, N, N, SelImm.IMM_X),
   FSQRT_S   ->List(SrcType.fp,  SrcType.imm, SrcType.DC, FuType.fmisc, X, N, Y, N, N, N, N, Y, SelImm.IMM_X),
   FSQRT_D   ->List(SrcType.fp,  SrcType.imm, SrcType.DC, FuType.fmisc, X, N, Y, N, N, N, N, N, SelImm.IMM_X)
+  )
+}
+
+/**
+ * Svinval extension Constants
+ */
+object SvinvalDecode extends DecodeConstants {
+  val table: Array[(BitPat, List[BitPat])] = Array(
+  /* sinval_vma is like sfence.vma , but sinval_vma can be dispatched and issued like normal instructions while sfence.vma 
+   * must assure it is the ONLY instrucion executing in backend.
+   */
+  SINVAL_VMA        ->List(SrcType.reg, SrcType.reg, SrcType.DC, FuType.fence, FenceOpType.sfence, N, N, N, N, N, N, N, SelImm.IMM_X),
+  /* sfecne.w.inval is the begin instrucion of a TLB flush which set *noSpecExec* and *blockBackward* signals 
+   * so when it comes to dispatch , it will block all instruction after itself until all instrucions ahead of it in rob commit 
+   * then dispatch and issue this instrucion to flush sbuffer to dcache
+   * after this instrucion commits , issue following sinval_vma instructions (out of order) to flush TLB
+   */
+  SFENCE_W_INVAL    ->List(SrcType.DC, SrcType.DC, SrcType.DC, FuType.fence, FenceOpType.nofence, N, N, N, Y, Y, N, N, SelImm.IMM_X),
+  /* sfecne.inval.ir is the end instrucion of a TLB flush which set *noSpecExec* *blockBackward* and *flushPipe* signals 
+   * so when it comes to dispatch , it will wait until all sinval_vma ahead of it in rob commit 
+   * then dispatch and issue this instrucion
+   * when it commit at the head of rob , flush the pipeline since some instrucions have been fetched to ibuffer using old TLB map 
+   */
+  SFENCE_INVAL_IR   ->List(SrcType.DC, SrcType.DC, SrcType.DC, FuType.fence, FenceOpType.nofence, N, N, N, Y, Y, Y, N, SelImm.IMM_X)
+  /* what is Svinval extension ? 
+   *                       ----->             sfecne.w.inval
+   * sfence.vma   vpn1     ----->             sinval_vma   vpn1
+   * sfence.vma   vpn2     ----->             sinval_vma   vpn2
+   *                       ----->             sfecne.inval.ir
+   * 
+   * sfence.vma should be executed in-order and it flushes the pipeline after committing
+   * we can parallel sfence instrucions with this extension 
+   */
+    )
+}
+/*
+ * CBO decode
+ */
+object CBODecode extends DecodeConstants {
+  val table: Array[(BitPat, List[BitPat])] = Array(
+    CBO_ZERO  -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.stu, LSUOpType.cbo_zero , N, N, N, N, N, N, N, SelImm.IMM_S),
+    CBO_CLEAN -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.stu, LSUOpType.cbo_clean, N, N, N, N, N, N, N, SelImm.IMM_S),
+    CBO_FLUSH -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.stu, LSUOpType.cbo_flush, N, N, N, N, N, N, N, SelImm.IMM_S),
+    CBO_INVAL -> List(SrcType.reg, SrcType.DC, SrcType.DC, FuType.stu, LSUOpType.cbo_inval, N, N, N, N, N, N, N, SelImm.IMM_S)
   )
 }
 
@@ -479,6 +553,7 @@ object ImmUnion {
 class DecodeUnitIO(implicit p: Parameters) extends XSBundle {
   val enq = new Bundle { val ctrl_flow = Input(new CtrlFlow) }
   val deq = new Bundle { val cf_ctrl = Output(new CfCtrl) }
+  val csrCtrl = Input(new CustomCSRCtrlIO)
 }
 
 /**
@@ -492,7 +567,7 @@ class DecodeUnit(implicit p: Parameters) extends XSModule with DecodeUnitConstan
 
   ctrl_flow := io.enq.ctrl_flow
 
-  val decode_table = XDecode.table ++ FDecode.table ++ FDivSqrtDecode.table ++ X64Decode.table ++ XSTrapDecode.table ++ BDecode.table
+  val decode_table = XDecode.table ++ FDecode.table ++ FDivSqrtDecode.table ++ X64Decode.table ++ XSTrapDecode.table ++ BDecode.table ++ CBODecode.table ++ SvinvalDecode.table
 
   // output
   cf_ctrl.cf := ctrl_flow
@@ -500,25 +575,33 @@ class DecodeUnit(implicit p: Parameters) extends XSModule with DecodeUnitConstan
   cs.singleStep := false.B
   cs.replayInst := false.B
 
-  cs.isFused := 0.U
-
   val fpDecoder = Module(new FPDecoder)
   fpDecoder.io.instr := ctrl_flow.instr
   cs.fpu := fpDecoder.io.fpCtrl
 
   val isMove = BitPat("b000000000000_?????_000_?????_0010011") === ctrl_flow.instr
-  cs.isMove := isMove
+  cs.isMove := isMove && ctrl_flow.instr(RD_MSB, RD_LSB) =/= 0.U
 
   // read src1~3 location
-  cs.lsrc(0) := Mux(ctrl_flow.instr === LUI, 0.U,ctrl_flow.instr(RS1_MSB,RS1_LSB))
-  cs.lsrc(1) := ctrl_flow.instr(RS2_MSB,RS2_LSB)
-  cs.lsrc(2) := ctrl_flow.instr(RS3_MSB,RS3_LSB)
+  cs.lsrc(0) := Mux(ctrl_flow.instr === LUI, 0.U, ctrl_flow.instr(RS1_MSB, RS1_LSB))
+  cs.lsrc(1) := ctrl_flow.instr(RS2_MSB, RS2_LSB)
+  cs.lsrc(2) := ctrl_flow.instr(RS3_MSB, RS3_LSB)
   // read dest location
-  cs.ldest := Mux((cs.fpWen || cs.rfWen) && !(isMove && ctrl_flow.instr(RS1_MSB,RS1_LSB) === ctrl_flow.instr(RD_MSB,RD_LSB)), ctrl_flow.instr(RD_MSB,RD_LSB), 0.U)
+  cs.ldest := ctrl_flow.instr(RD_MSB, RD_LSB)
 
   // fill in exception vector
   cf_ctrl.cf.exceptionVec := io.enq.ctrl_flow.exceptionVec
   cf_ctrl.cf.exceptionVec(illegalInstr) := cs.selImm === SelImm.INVALID_INSTR
+
+  when (!io.csrCtrl.svinval_enable) {
+    val base_ii = cs.selImm === SelImm.INVALID_INSTR
+    val sinval = BitPat("b0001011_?????_?????_000_00000_1110011") === ctrl_flow.instr
+    val w_inval = BitPat("b0001100_00000_00000_000_00000_1110011") === ctrl_flow.instr
+    val inval_ir = BitPat("b0001100_00001_00000_000_00000_1110011") === ctrl_flow.instr
+    val svinval_ii = sinval || w_inval || inval_ir
+    cf_ctrl.cf.exceptionVec(illegalInstr) := base_ii || svinval_ii
+    cs.flushPipe := false.B
+  }
 
   // fix frflags
   //                           fflags    zero csrrs rd    csr
@@ -530,6 +613,21 @@ class DecodeUnit(implicit p: Parameters) extends XSModule with DecodeUnitConstan
   // fix isXSTrap
   when (cs.isXSTrap) {
     cs.lsrc(0) := XSTrapDecode.lsrc1
+  }
+
+  //to selectout prefetch.r/prefetch.w
+  val isORI = BitPat("b?????????????????110?????0010011") === ctrl_flow.instr
+  when(isORI) {
+    // TODO: add CSR based Zicbop config
+    when(cs.ldest === 0.U) {
+      cs.selImm := SelImm.IMM_S
+      cs.fuType := FuType.ldu
+      when(cs.lsrc(1) === "b00001".U) {
+        cs.fuOpType := LSUOpType.prefetch_r
+      }.otherwise {
+        cs.fuOpType := LSUOpType.prefetch_w
+      }
+    }
   }
 
   cs.imm := LookupTree(cs.selImm, ImmUnion.immSelMap.map(

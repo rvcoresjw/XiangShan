@@ -158,7 +158,7 @@ class TageBTable
    // val update  = Input(new TageUpdate)
     val update = Flipped(Valid(new BranchPredictionUpdate))
   })
-    
+
   val bimAddr = new TableAddr(log2Up(BtSize), 1)
 
   val bt = Module(new SRAMTemplate(UInt(2.W), set = BtSize, way=numBr, shouldReset = false, holdRead = true))
@@ -178,8 +178,8 @@ class TageBTable
   io.s1_cnt := bt.io.r.resp.data
 
   // Update logic
-  val u_valid = RegNext(io.update.valid)
-  val update = RegNext(io.update.bits)
+  val u_valid = io.update.valid
+  val update = io.update.bits
 
   val u_idx = bimAddr.getIdx(update.pc)
 
@@ -207,7 +207,7 @@ class TageBTable
         Mux(taken, old + 1.U, old - 1.U)))
   }
 
-  val newTakens = update.preds.taken_mask
+  val newTakens = update.preds.br_taken_mask
   val newCtrs = VecInit((0 until numBr).map(i =>
     satUpdate(oldCtrs(i), 2, newTakens(i))
   ))
@@ -494,7 +494,7 @@ class FakeTage(implicit p: Parameters) extends BaseTage {
 
 @chiselName
 class Tage(implicit p: Parameters) extends BaseTage {
-  
+
   val resp_meta = Wire(MixedVec((0 until TageBanks).map(new TageMeta(_))))
   override val meta_size = resp_meta.getWidth
   val bank_tables = BankTableInfos.zipWithIndex.map {
@@ -518,7 +518,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
   // Keep the table responses to process in s3
 
 
-  val s1_resps = MixedVecInit(bank_tables.map(b => VecInit(b.map(t => t.io.resp)))) 
+  val s1_resps = MixedVecInit(bank_tables.map(b => VecInit(b.map(t => t.io.resp))))
 
   //val s1_bim = io.in.bits.resp_in(0).s1.preds
   // val s2_bim = RegEnable(s1_bim, enable=io.s1_fire)
@@ -570,7 +570,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
   val update = io.update.bits
   val updateValids = VecInit((0 until TageBanks).map(w =>
       update.ftb_entry.brValids(w) && u_valid && !update.ftb_entry.always_taken(w) &&
-      !(PriorityEncoder(update.preds.taken_mask) < w.U)))
+      !(PriorityEncoder(update.preds.br_taken_mask) < w.U)))
   val updateHist = update.ghist
   val updatePhist = update.phist
 
@@ -665,7 +665,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
     // Update in loop
     val updateValid = updateValids(w)
     val updateMeta = updateMetas(w)
-    val isUpdateTaken = updateValid && update.preds.taken_mask(w)
+    val isUpdateTaken = updateValid && update.preds.br_taken_mask(w)
     val updateMisPred = updateMisPreds(w)
     val up_altpredhit = updateMeta.altpredhit
     val up_prednum    = updateMeta.prednum.bits
@@ -694,7 +694,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
       }
     }
 
-    //update base table condition
+    // update base table if used base table to predict
     when (updateValid) { 
       when(updateMeta.provider.valid) {
         when(~up_altpredhit && updateMisPred && (updateMeta.predcnt === 3.U || updateMeta.predcnt === 4.U)) {
@@ -712,8 +712,10 @@ class Tage(implicit p: Parameters) extends BaseTage {
       baseupdate(w) := false.B
     }
     updatebcnt(w) := updateMeta.basecnt
-        
-    when (updateValid && updateMisPred && ~((((updateMeta.predcnt === 3.U && (~isUpdateTaken))) || ((updateMeta.predcnt === 4.U && isUpdateTaken))) && updateMeta.provider.valid)) {
+  
+    // if mispredicted and not the case that
+    // provider offered correct target but used altpred due to unconfident
+    when (updateValid && updateMisPred && ~((updateMeta.predcnt === 3.U && ~isUpdateTaken || updateMeta.predcnt === 4.U && isUpdateTaken) && updateMeta.provider.valid)) {
     //when (updateValid && updateMisPred) {
       val allocate = updateMeta.allocate
       when (allocate.valid) {
@@ -737,7 +739,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
   }
 
   for (i <- 0 until numBr) {
-    resp_s2.preds.taken_mask(i) := s2_tageTakens(i)
+    resp_s2.preds.br_taken_mask(i) := s2_tageTakens(i)
   }
   // io.out.resp.s3 := RegEnable(resp_s2, io.s2_fire)
 
@@ -756,9 +758,9 @@ class Tage(implicit p: Parameters) extends BaseTage {
       bank_tables(w)(i).io.update.phist := RegNext(updatePhist)
     }
   }
-  bt.io.update  := io.update 
-  bt.io.update.valid := baseupdate.reduce(_||_)
-  bt.io.update_cnt := updatebcnt
+  bt.io.update  := RegNext(io.update)
+  bt.io.update.valid := RegNext(baseupdate.reduce(_||_))
+  bt.io.update_cnt := RegNext(updatebcnt)
 
   def pred_perf(name: String, cnt: UInt)   = XSPerfAccumulate(s"${name}_at_pred", cnt)
   def commit_perf(name: String, cnt: UInt) = XSPerfAccumulate(s"${name}_at_commit", cnt)
@@ -803,7 +805,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
     val m = updateMetas(b)
     // val bri = u.metas(b)
     XSDebug(updateValids(b), "update(%d): pc=%x, cycle=%d, hist=%x, taken:%b, misPred:%d, bimctr:%d, pvdr(%d):%d, altDiff:%d, pvdrU:%d, pvdrCtr:%d, alloc(%d):%d\n",
-      b.U, update.pc, 0.U, updateHist.predHist, update.preds.taken_mask(b), update.mispred_mask(b),
+      b.U, update.pc, 0.U, updateHist.predHist, update.preds.br_taken_mask(b), update.mispred_mask(b),
       0.U, m.provider.valid, m.provider.bits, m.altDiffers, m.providerU, m.providerCtr, m.allocate.valid, m.allocate.bits
     )
   }
@@ -812,7 +814,7 @@ class Tage(implicit p: Parameters) extends BaseTage {
   XSDebug("s1_fire:%d, resp: pc=%x, hist=%b\n", io.s1_fire, debug_pc_s1, debug_hist_s1)
   XSDebug("s2_fireOnLastCycle: resp: pc=%x, target=%x, hist=%b, hits=%b, takens=%b\n",
     debug_pc_s2, io.out.resp.s2.target, debug_hist_s2, s2_provideds.asUInt, s2_tageTakens.asUInt)
-  
+
   for (b <- 0 until TageBanks) {
     for (i <- 0 until BankTageNTables(b)) {
       XSDebug("bank(%d)_tage_table(%d): valid:%b, resp_ctr:%d, resp_us:%d\n",

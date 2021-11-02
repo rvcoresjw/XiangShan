@@ -29,10 +29,9 @@ class BusyTableReadIO(implicit p: Parameters) extends XSBundle {
 
 class BusyTable(numReadPorts: Int, numWritePorts: Int)(implicit p: Parameters) extends XSModule {
   val io = IO(new Bundle() {
-    val flush = Input(Bool())
     // set preg state to busy
     val allocPregs = Vec(RenameWidth, Flipped(ValidIO(UInt(PhyRegIdxWidth.W))))
-    // set preg state to ready (write back regfile + roq walk)
+    // set preg state to ready (write back regfile + rob walk)
     val wbPregs = Vec(numWritePorts, Flipped(ValidIO(UInt(PhyRegIdxWidth.W))))
     // read preg state
     val read = Vec(numReadPorts, new BusyTableReadIO)
@@ -54,10 +53,6 @@ class BusyTable(numReadPorts: Int, numWritePorts: Int)(implicit p: Parameters) e
 
   table := tableAfterAlloc
 
-  when(io.flush){
-    table := 0.U(NRPhyRegs.W)
-  }
-
   XSDebug(p"table    : ${Binary(table)}\n")
   XSDebug(p"tableNext: ${Binary(tableAfterAlloc)}\n")
   XSDebug(p"allocMask: ${Binary(allocMask)}\n")
@@ -67,4 +62,17 @@ class BusyTable(numReadPorts: Int, numWritePorts: Int)(implicit p: Parameters) e
   }
 
   XSPerfAccumulate("busy_count", PopCount(table))
+  val perfinfo = IO(new Bundle(){
+    val perfEvents = Output(new PerfEventsBundle(4))
+  })
+  val perfEvents = Seq(
+    ("std_freelist_1/4_valid          ", (PopCount(table) < (NRPhyRegs.U/4.U))                                             ),
+    ("std_freelist_2/4_valid          ", (PopCount(table) > (NRPhyRegs.U/4.U)) & (PopCount(table) <= (NRPhyRegs.U/2.U))    ),
+    ("std_freelist_3/4_valid          ", (PopCount(table) > (NRPhyRegs.U/2.U)) & (PopCount(table) <= (NRPhyRegs.U*3.U/4.U))),
+    ("std_freelist_4/4_valid          ", (PopCount(table) > (NRPhyRegs.U*3.U/4.U))                                         ),
+  )
+
+  for (((perf_out,(perf_name,perf)),i) <- perfinfo.perfEvents.perf_events.zip(perfEvents).zipWithIndex) {
+    perf_out.incr_step := RegNext(perf)
+  }
 }

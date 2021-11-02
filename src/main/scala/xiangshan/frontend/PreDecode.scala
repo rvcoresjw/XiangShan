@@ -105,7 +105,7 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
     val out = Output(new PreDecodeResp)
   })
 
-  val instValid     = io.in.instValid 
+  val instValid     = io.in.instValid
   val data          = io.in.data
   val pcStart       = io.in.startAddr
   val pcEnd         = io.in.fallThruAddr
@@ -117,7 +117,6 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
   val oversize      = io.in.oversize
   val pageFault     = io.in.pageFault
   val accessFault   = io.in.accessFault
-
 
   val validStart        = Wire(Vec(PredictWidth, Bool()))
   dontTouch(validStart)
@@ -133,9 +132,9 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
   val realMissPred      = Wire(Vec(PredictWidth, Bool()))
   val realTakens        = Wire(Vec(PredictWidth, Bool()))
 
-  val rawInsts = if (HasCExtension) VecInit((0 until PredictWidth).map(i => Cat(data(i+1), data(i))))  
+  val rawInsts = if (HasCExtension) VecInit((0 until PredictWidth).map(i => Cat(data(i+1), data(i))))
                        else         VecInit((0 until PredictWidth).map(i => data(i)))
-  
+
   val nextLinePC =  align(pcStart, 64) + 64.U
 
   for (i <- 0 until PredictWidth) {
@@ -143,8 +142,8 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
     val isNextLine      = (io.out.pc(i) > nextLinePC)
     val nullInstruction = isNextLine && !isDoubleLine
 
-    val hasPageFault   = validStart(i) && ((io.out.pc(i) < nextLinePC && pageFault(0))   || (io.out.pc(i) > nextLinePC && pageFault(1)))
-    val hasAccessFault = validStart(i) && ((io.out.pc(i) < nextLinePC && accessFault(0)) || (io.out.pc(i) > nextLinePC && accessFault(1)))
+    val hasPageFault   = ((io.out.pc(i) < nextLinePC && pageFault(0))   || ((io.out.pc(i) > nextLinePC || io.out.pc(i) === nextLinePC) && pageFault(1)))
+    val hasAccessFault = ((io.out.pc(i) < nextLinePC && accessFault(0)) || ((io.out.pc(i) > nextLinePC || io.out.pc(i) === nextLinePC) && accessFault(1)))
     val exception      = hasPageFault || hasAccessFault
     val inst           = Mux(exception || nullInstruction , NOP, WireInit(rawInsts(i)))
     val expander       = Module(new RVCExpander)
@@ -155,7 +154,7 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
     val currentIsRVC   = isRVC(inst) && HasCExtension.B
 
     val lastIsValidEnd =  if (i == 0) { !io.in.lastHalfMatch } else { validEnd(i-1) || isFirstInBlock || !HasCExtension.B }
-    
+
     validStart(i)   := (lastIsValidEnd || !HasCExtension.B)
     validEnd(i)     := validStart(i) && currentIsRVC || !validStart(i) || !HasCExtension.B
 
@@ -166,12 +165,13 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
     io.out.pd(i).valid         := (lastIsValidEnd || !HasCExtension.B)
     io.out.pd(i).isRVC         := currentIsRVC
     io.out.pd(i).brType        := brType
-    io.out.pd(i).isCall        := isCall 
+    io.out.pd(i).isCall        := isCall
     io.out.pd(i).isRet         := isRet
     io.out.pc(i)               := currentPC
-    io.out.pageFault(i)        := hasPageFault
-    io.out.accessFault(i)      := hasAccessFault
     io.out.crossPageIPF(i)     := (io.out.pc(i) === align(realEndPC, 64) - 2.U) && !pageFault(0) && pageFault(1) && !currentIsRVC
+    io.out.pageFault(i)        := hasPageFault    ||  io.out.crossPageIPF(i) 
+    io.out.accessFault(i)      := hasAccessFault
+
 
     expander.io.in             := inst
     io.out.instrs(i)           := expander.io.out.bits
@@ -181,13 +181,13 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
     val jumpTarget      = io.out.pc(i) + Mux(io.out.pd(i).isBr, brOffset, jalOffset)
     targets(i) := Mux(takens(i), jumpTarget, pcEnd)
                        //Banch and jal have wrong targets
-    val targetFault    = (validStart(i)  && i.U === bbOffset && bbTaken && (io.out.pd(i).isBr || io.out.pd(i).isJal) && bbTarget =/= targets(i))  
+    val targetFault    = (validStart(i)  && i.U === bbOffset && bbTaken && (io.out.pd(i).isBr || io.out.pd(i).isJal) && bbTarget =/= targets(i))
                        //An not-CFI instruction is predicted taken
-    val notCFIFault    = (validStart(i)  && i.U === bbOffset && io.out.pd(i).notCFI && bbTaken) 
+    val notCFIFault    = (validStart(i)  && i.U === bbOffset && io.out.pd(i).notCFI && bbTaken)
                        //A jal instruction is predicted not taken
     val jalFault       = (validStart(i)  && !bbTaken && io.out.pd(i).isJal)
                        //A ret instruction is predicted not taken
-    val retFault       = (validStart(i)  && !bbTaken && io.out.pd(i).isRet) 
+    val retFault       = (validStart(i)  && !bbTaken && io.out.pd(i).isRet)
                        //An invalid instruction is predicted taken
     val invalidInsFault  = (!validStart(i)  && i.U === bbOffset && bbTaken)
 
@@ -196,7 +196,7 @@ class PreDecode(implicit p: Parameters) extends XSModule with HasPdConst{
 
     realMissPred(i)     := misPred(i) && instRange(i)
     realHasLastHalf(i)  := instValid && currentPC === (realEndPC - 2.U) && validStart(i) && instRange(i) && !currentIsRVC
-    realTakens(i)       := takens(i) && instRange(i)  
+    realTakens(i)       := takens(i) && instRange(i)
   }
 
   val jumpOH                  =  VecInit(io.out.pd.zipWithIndex.map{ case(inst, i) => inst.isJal  && validStart(i) }) //TODO: need jalr?
